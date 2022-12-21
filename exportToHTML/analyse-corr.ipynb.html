@@ -1,0 +1,349 @@
+<html>
+<head>
+<title>analyse-corr.ipynb</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<style type="text/css">
+.s0 { color: #5c6370; font-style: italic;}
+.s1 { color: #bbbbbb;}
+.s2 { color: #d55fde; font-style: italic;}
+.s3 { color: #89ca78;}
+.s4 { color: #d19a66;}
+.s5 { color: #2bbac5;}
+</style>
+</head>
+<body bgcolor="#282c34">
+<table CELLSPACING=0 CELLPADDING=5 COLS=1 WIDTH="100%" BGCOLOR="#606060" >
+<tr><td><center>
+<font face="Arial, Helvetica" color="#000000">
+analyse-corr.ipynb</font>
+</center></td></tr></table>
+<pre><span class="s0">#%% md 
+</span><span class="s1"># Contexte 
+ 
+Le travail suivant a été réalisé par : 
+- ADAM Gregory (SDIA TPS) 
+- CHAILLOUX Matthieu (SDIA TPS) 
+ 
+et ce dans le cadre du cours &quot;Science des données appliquées&quot; du M2 SDIA / SDSC 
+</span><span class="s0">#%% md 
+</span><span class="s1"># Import modules et données 
+</span><span class="s0">#%% 
+</span><span class="s2">import </span><span class="s1">pandas </span><span class="s2">as </span><span class="s1">pd</span>
+<span class="s2">import </span><span class="s1">seaborn </span><span class="s2">as </span><span class="s1">sns</span>
+<span class="s2">import </span><span class="s1">matplotlib.pyplot </span><span class="s2">as </span><span class="s1">plt</span>
+<span class="s0">#%% 
+</span><span class="s1">taxon_df = pd.read_csv(</span><span class="s3">&quot;données/taxon.csv&quot;</span><span class="s1">)</span>
+<span class="s1">taxon_denombre_df = pd.read_csv(</span><span class="s3">&quot;données/taxon_denombre.csv&quot;</span><span class="s1">)</span>
+<span class="s1">liste_df = pd.read_csv(</span><span class="s3">&quot;données/liste_faunistique_floristique.csv&quot;</span><span class="s1">)</span>
+<span class="s1">stations_df = pd.read_csv(</span><span class="s3">&quot;données/station.csv&quot;</span><span class="s1">)</span>
+<span class="s1">physicochimie_df = pd.read_csv(</span><span class="s3">&quot;données/physicochimie.csv&quot;</span><span class="s1">)</span>
+<span class="s1">alteration_df = pd.read_csv(</span><span class="s3">&quot;données/classe_alteration_seq_eau.csv&quot;</span><span class="s1">)</span>
+<span class="s0">#%% md 
+</span><span class="s1"># Problèmatique retenue 
+</span><span class="s0">#%% md 
+</span><span class="s1">Après lecture de la description des données et une première visualisation des différents datasets, nous avons décidé de nous intéresser à la question suivante : &quot;Est-il possible d'établir un lien entre l'évolution de paramètres physico-chimiques et celle du nombre d'individus, pour un taxon et une zone géographique donnée ?&quot; 
+ 
+Les données sont réparties en de multiples tableaux et les analyser sans but précis est inutile. On dispose de données relatives aux espèces observées en une zone géographique (une station), de mesures sur ces espèces, d'une hiérarchie sur ces espèces, de relevés de multiples paramètres physico-chimiques de l'eau et une liste de classes d'altérations, correspondant à des combinaisons de valeurs pour ces paramètres. 
+ 
+Pour exposer le raisonnement derrière le choix de notre problématique, commençons par récupérer la liste complète des paramètres mesurés sur les membres d'un taxon (un groupement d'espèce). 
+</span><span class="s0">#%% md 
+</span><span class="s1">Tout d'abord, un extrait de la table taxon_denombre : 
+</span><span class="s0">#%% 
+</span><span class="s1">taxon_denombre_df.head(</span><span class="s4">10</span><span class="s1">)</span>
+<span class="s0">#%% 
+</span><span class="s1">taxon_denombre_df[[</span><span class="s3">&quot;critere_taxon&quot;</span><span class="s1">, </span><span class="s3">&quot;critere_taxon_id&quot;</span><span class="s1">]]\</span>
+    <span class="s1">.sort_values(</span><span class="s3">&quot;critere_taxon&quot;</span><span class="s1">)\</span>
+    <span class="s1">.set_index(</span><span class="s3">&quot;critere_taxon_id&quot;</span><span class="s1">)\</span>
+    <span class="s1">.drop_duplicates()</span>
+<span class="s0">#%% md 
+</span><span class="s1">18 paramètres uniques sont présents: 
+- 6 portés sur des mesures de longueurs, d'un individu ou d'un ensemble 
+- 10 portés sur le poids d'un individu ou d'un ensemble 
+- L'abondance relative. Nous n'avons pas saisi clairement à quoi se référait ce paramètre. Nous avons trouvé quelques ressources sur le site du SANDRE ([liste de paramètres en hydrobiologie](https://mdm.sandre.eaufrance.fr/node/413859), [Abondance relative comme définie par l'IBMA](https://mdm.sandre.eaufrance.fr/node/413859)) mais sa signification reste floue. Peut-être est-ce la proportion observée comparée à une proportion standard attendue pour ce taxon dans un type de milieu donnée, ou une proportion par rapport à l'ensemble des taxons prélevés. 
+- Le nombre exact d'individus 
+ 
+Nous ne nous sommes intéressés qu'à ce dernier critère. Les mesures individuelles ne nous semblent que peu pertinentes d'un point de vue statistique. Le poids et la taille dependent, entre autres, du développement, croissance, survie et capacité à se nourrir correctement des individus, critères qui influent directement sur le nombre d'individus dans une population. Ce critère semble donc pertinent pour une première analyse. 
+ 
+Enfin, on peut constater des irrégularités dans les mesures de poids et de longueurs (poids nuls ou négatifs pour respecter les totaux associés, poids min &gt; poids max...). Il est clair qu'il est plus difficile d'avoir une erreur si grossière sur un compte d'individus. 
+Enfin, il existe en hydrobiologie des critères se concentrant sur le nombre d'individus (IBGN, par exemple). Si ceux-ci ont leur limites, il est évident que le nombre d'individus reste une donnée intéressante et nous semble être adapté à une analyse par des non-experts du domaine. 
+ 
+Nous concentrer sur un unique paramètre nous permet aussi de passer plus de temps sur le travail de réflexion et d'analyse. 
+</span><span class="s0">#%% md 
+</span><span class="s1"># Préparation des données 
+ 
+Pour l'ensemble des relevés, on ne s'intéresse qu'à l'année comme date. 
+ 
+On s'intéresse à l'évolution du nombre d'individus, on vérifie qu'un unique code de critère y est associé. 
+</span><span class="s0">#%% 
+</span><span class="s1">critere_nombre_individus = taxon_denombre_df[taxon_denombre_df[</span><span class="s3">&quot;critere_taxon&quot;</span><span class="s1">] == </span><span class="s3">&quot;Nombre exact d'individus&quot;</span><span class="s1">]\</span>
+    <span class="s1">[</span><span class="s3">&quot;critere_taxon_id&quot;</span><span class="s1">]\</span>
+    <span class="s1">.unique()\</span>
+    <span class="s1">.tolist()</span>
+<span class="s1">print(</span><span class="s3">f&quot;ID(s) associé(s) au critère 'Nombre d'individus' : </span><span class="s5">{</span><span class="s1">critere_nombre_individus</span><span class="s5">}</span><span class="s3">&quot;</span><span class="s1">)</span>
+<span class="s0">#%% md 
+</span><span class="s1">On vérifie ensuite que ce code est uniquement associé à ce critère : 
+</span><span class="s0">#%% 
+</span><span class="s1">df = taxon_denombre_df[taxon_denombre_df[</span><span class="s3">&quot;critere_taxon_id&quot;</span><span class="s1">].isin(critere_nombre_individus)]</span>
+<span class="s1">criteres_by_id = df[</span><span class="s3">&quot;critere_taxon&quot;</span><span class="s1">].unique().tolist()</span>
+<span class="s1">print(</span><span class="s3">f&quot;Critère(s) associé(s) à l'ID '</span><span class="s5">{</span><span class="s1">critere_nombre_individus</span><span class="s5">}</span><span class="s3">' : </span><span class="s5">{</span><span class="s1">criteres_by_id</span><span class="s5">}</span><span class="s3">&quot;</span><span class="s1">)</span>
+<span class="s0">#%% md 
+</span><span class="s1">On ne s'intéresse qu'à un unique critère. On a vérifié la cohérence de notre selection : les colonnes propres aux critères sont inutiles 
+</span><span class="s0">#%% 
+</span><span class="s1">individus_taxons = df.drop(columns=[</span><span class="s3">&quot;critere_taxon&quot;</span><span class="s1">, </span><span class="s3">&quot;critere_taxon_id&quot;</span><span class="s1">])</span>
+<span class="s0">#%% md 
+</span><span class="s1">Ensuite, on remarque qu'une seule mesure est bien effectuée par taxon, par liste faunistique et floristique 
+</span><span class="s0">#%% 
+</span><span class="s1">print(</span><span class="s3">f&quot;Nombre de relevés possibles par taxon pour une liste faunistique et floristique :&quot;</span><span class="s1">)</span>
+<span class="s1">individus_taxons\</span>
+    <span class="s1">.groupby([</span><span class="s3">&quot;taxon_id&quot;</span><span class="s1">, </span><span class="s3">'liste_ff_id'</span><span class="s1">])\</span>
+    <span class="s1">.count()\</span>
+    <span class="s1">[</span><span class="s3">&quot;valeur&quot;</span><span class="s1">]\</span>
+    <span class="s1">.unique()\</span>
+    <span class="s1">.tolist()</span>
+<span class="s0">#%% md 
+</span><span class="s1">On cherche à exhiber une éventuelle corrélation, significative statistiquement, entre le nombre d'individus d'une population et les paramètres physico-chimique. Cette étude est à réaliser par taxon, les conditions nécessaires à un taxon en particulier pouvant varier grandement. On effectue notre analyse sur les taxons pour lesquels on dispose du plus grand nombre de relevés. On en sélectionne ici 5. 
+</span><span class="s0">#%% 
+</span><span class="s1">mesure_par_taxon = individus_taxons\</span>
+    <span class="s1">.drop(columns=[</span><span class="s3">&quot;valeur&quot;</span><span class="s1">])\</span>
+    <span class="s1">.groupby([</span><span class="s3">&quot;taxon_id&quot;</span><span class="s1">])\</span>
+    <span class="s1">.count()\</span>
+    <span class="s1">[</span><span class="s3">&quot;liste_ff_id&quot;</span><span class="s1">]</span>
+
+<span class="s1">taxons_to_keep = mesure_par_taxon[mesure_par_taxon &gt; </span><span class="s4">21000</span><span class="s1">]\</span>
+    <span class="s1">.index\</span>
+    <span class="s1">.tolist()</span>
+<span class="s1">print(</span><span class="s3">f&quot;Taxons conservés : </span><span class="s5">{</span><span class="s1">taxons_to_keep</span><span class="s5">}</span><span class="s3">&quot;</span><span class="s1">)</span>
+<span class="s0">#%% md 
+</span><span class="s1">À noter que le taxon *807* représente les &quot;Chironomidae&quot;. 
+Leur page Wikipedia présente l'information suivante : 
+&gt; Après une pollution organique majeure ou durable, ces espèces font partie des espèces pionnières qui contribuent à la résilience de l'écosystème. 
+ 
+Ainsi, il peut être intéressant d'étudier les variations soudaines du nombre d'individus de ce taxon, permettant d'isoler les paramètres associés à une telle pollution. 
+</span><span class="s0">#%% 
+</span><span class="s1">nom_taxon = taxon_df[taxon_df[</span><span class="s3">&quot;id&quot;</span><span class="s1">] == </span><span class="s4">807</span><span class="s1">][</span><span class="s3">&quot;nom_latin&quot;</span><span class="s1">].tolist()[</span><span class="s4">0</span><span class="s1">]</span>
+<span class="s1">print(</span><span class="s3">f&quot;Nom du taxon 807 : '</span><span class="s5">{</span><span class="s1">nom_taxon</span><span class="s5">}</span><span class="s3">'&quot;</span><span class="s1">)</span>
+<span class="s0">#%% md 
+</span><span class="s1">On veut étudier les éventuelles corrélations entre paramètres physico-chimiques et nombre d'individus. Il nous faut réunir les différents dataframes. 
+On commence par join les stations et les listes faunistique et floristique. Ainsi, on peut ensuite join les relevés par taxons, via la valeur de l'id de la liste ff. Cela nous permet de lier un relevé à une station, et d'ensuite y associer les relevés physico-chimiques associés à la même période. 
+ 
+On peut observer ci-dessous la jointure station - liste_ff - relevés_taxons, de laquelle on a supprimé les colonnes qui ne nous intéressent pas et les lignes dupliquées par les jointures. 
+</span><span class="s0">#%% 
+</span>
+<span class="s1">liste_df_to_merge = liste_df.drop(columns=[</span><span class="s3">&quot;date_prel&quot;</span><span class="s1">, </span><span class="s3">&quot;facies_vitesse&quot;</span><span class="s1">, </span><span class="s3">&quot;facies_profondeur&quot;</span><span class="s1">, </span><span class="s3">&quot;facies_substrat&quot;</span><span class="s1">])</span>
+<span class="s1">stn_lf = stations_df\</span>
+    <span class="s1">.drop(columns=[</span><span class="s3">&quot;nom_masse_eau&quot;</span><span class="s1">, </span><span class="s3">&quot;st_y&quot;</span><span class="s1">, </span><span class="s3">&quot;st_x&quot;</span><span class="s1">, </span><span class="s3">&quot;date_year&quot;</span><span class="s1">])\</span>
+    <span class="s1">.merge(liste_df_to_merge, left_on=</span><span class="s3">'id'</span><span class="s1">, right_on=</span><span class="s3">'id'</span><span class="s1">)</span>
+
+<span class="s1">releves_taxons_kept = individus_taxons[individus_taxons[</span><span class="s3">&quot;taxon_id&quot;</span><span class="s1">].isin(taxons_to_keep)]</span>
+<span class="s1">stn_taxon = stn_lf.merge(releves_taxons_kept, left_on=</span><span class="s3">'liste_faunistique_floristique'</span><span class="s1">, right_on=</span><span class="s3">'liste_ff_id'</span><span class="s1">).drop(columns=[</span><span class="s3">&quot;liste_faunistique_floristique&quot;</span><span class="s1">]).rename(columns={</span><span class="s3">&quot;valeur&quot;</span><span class="s1">: </span><span class="s3">&quot;Nombre exact d'individus&quot;</span><span class="s1">})</span>
+<span class="s1">stn_taxon.drop_duplicates(inplace=</span><span class="s2">True</span><span class="s1">)</span>
+<span class="s1">stn_taxon.sort_values([</span><span class="s3">&quot;taxon_id&quot;</span><span class="s1">, </span><span class="s3">&quot;liste_ff_id&quot;</span><span class="s1">]).head(</span><span class="s4">10</span><span class="s1">)</span>
+<span class="s0">#%% md 
+</span><span class="s1">Le tableau des relevés physico-chimiques est sous le format ci-dessous. 
+ 
+Un relevé est effectué sur une station lors d'une année. Une ligne du tableau concerne un paramètre, avec son id et son nom, l'unité concernée (id et nom) et la valeur mesurée. 
+</span><span class="s0">#%% 
+</span><span class="s1">physicochimie_df.sample(</span><span class="s4">10</span><span class="s1">)</span>
+<span class="s0">#%% md 
+</span><span class="s1">On souhaite étudier les paramètres physico-chimiques lors d'un relevé de taxons. Il faut donc réussir à lier les paramètres lors d'un relevé d'une station aux relevés d'un taxon d'une station. 
+Il faut ainsi s'assurer que la valeur d'un paramètre sur une période (une année) pour une station ne soit pas ambiguë. On étudie le nombre de relevés des paramètres par station par an. 
+</span><span class="s0">#%% 
+</span><span class="s1">count_mesures = physicochimie_df\</span>
+    <span class="s1">.groupby([</span><span class="s3">&quot;stn_id&quot;</span><span class="s1">, </span><span class="s3">&quot;date_year&quot;</span><span class="s1">, </span><span class="s3">&quot;parameter_name&quot;</span><span class="s1">])\</span>
+    <span class="s1">.count()\</span>
+    <span class="s1">[</span><span class="s3">&quot;valeur&quot;</span><span class="s1">]\</span>
+    <span class="s1">.value_counts()</span>
+<span class="s1">value_mesures = count_mesures.index.tolist()</span>
+<span class="s1">print(</span><span class="s3">f&quot;Nombre de paramètres qui ont été mesurées </span><span class="s5">{</span><span class="s1">value_mesures</span><span class="s5">} </span><span class="s3">fois (par station par année)&quot;</span><span class="s1">)</span>
+<span class="s1">count_mesures</span>
+<span class="s0">#%% md 
+</span><span class="s1">2279 fois un paramètre a été mesuré 2 fois dans la même année pour une station. 
+Cela est arrivé 18 fois pour 3 mesures. 
+ 
+On ne peut donc pas associer automatiquement une valeur par paramètre pour une station et année donnée. On choisit d'ignorer les relevés multiples et de ne garder que le premier rencontré en parcourant le Dataframe. On pourrait moyenner sur les 2 ou 3 valeurs, mais cela serait moins cohérent avec le reste des relevés, correspondant à une prise unique. 
+ 
+On va ainsi effectuer un pivot sur les paramètres. Les paramètres sont les suivants : 
+</span><span class="s0">#%% 
+</span><span class="s1">physicochimie_df.parameter_name.unique().tolist()</span>
+<span class="s0">#%% md 
+</span><span class="s1">On effectue le pivot sur les paramètres, en gardant l'index original. À l'aide de ce dernier, on concatène les stations et la date, qu'on utilise pour grouper les lignes (en ignorant les relevés multiples comme précisé précédemment). Ainsi, une ligne correspond aux paramètres mesurés sur une station pour une année. 
+</span><span class="s0">#%% 
+</span><span class="s1">pivot_params = physicochimie_df.pivot(index=</span><span class="s2">None</span><span class="s1">, columns=</span><span class="s3">&quot;parameter_name&quot;</span><span class="s1">, values=</span><span class="s3">&quot;valeur&quot;</span><span class="s1">)</span>
+<span class="s1">params_year_stn = pd\</span>
+    <span class="s1">.concat([physicochimie_df[[</span><span class="s3">&quot;stn_id&quot;</span><span class="s1">, </span><span class="s3">&quot;date_year&quot;</span><span class="s1">]], pivot_params], axis=</span><span class="s4">1</span><span class="s1">)\</span>
+    <span class="s1">.groupby([</span><span class="s3">&quot;stn_id&quot;</span><span class="s1">, </span><span class="s3">&quot;date_year&quot;</span><span class="s1">])\</span>
+    <span class="s1">.first()\</span>
+    <span class="s1">.reset_index()</span>
+<span class="s1">params_year_stn.sample(</span><span class="s4">10</span><span class="s1">)</span>
+<span class="s0">#%% md 
+</span>
+<span class="s0">#%% md 
+</span><span class="s1">On peut enfin joindre le tableau obtenu avec la jointure précédente. 
+Pour une station et une année donnée, on a différents taxons et leur nombre d'individus, ainsi que les paramètres physico-chimiques. 
+</span><span class="s0">#%% 
+</span><span class="s1">stn_taxon_pc = stn_taxon.merge(params_year_stn, left_on=[</span><span class="s3">&quot;id&quot;</span><span class="s1">, </span><span class="s3">&quot;date_year&quot;</span><span class="s1">], right_on=[</span><span class="s3">&quot;stn_id&quot;</span><span class="s1">,</span><span class="s3">&quot;date_year&quot;</span><span class="s1">])</span>
+<span class="s1">result = stn_taxon_pc.drop(columns=[</span><span class="s3">&quot;id&quot;</span><span class="s1">])</span>
+<span class="s1">result.sample(</span><span class="s4">10</span><span class="s1">)</span>
+<span class="s0">#%% md 
+</span><span class="s1"># Analyse des corrélations nombre d'individus / paramètres 
+</span><span class="s0">#%% 
+</span><span class="s2">def </span><span class="s1">plot_x(x, mode:str, id, num_releves, taxon:int):</span>
+        <span class="s1">plt.figure()</span>
+        <span class="s1">hm = sns.heatmap(x, annot=</span><span class="s2">True</span><span class="s1">)</span>
+        <span class="s1">hm.set(xlabel=</span><span class="s3">'Correlation value'</span><span class="s1">, ylabel=</span><span class="s3">'Parameters'</span><span class="s1">, title = </span><span class="s3">f&quot;Correlation taxon </span><span class="s5">{</span><span class="s1">taxon</span><span class="s5">}</span><span class="s3">, </span><span class="s5">{</span><span class="s1">mode</span><span class="s5">} </span><span class="s3">: </span><span class="s5">{</span><span class="s1">id</span><span class="s5">}</span><span class="s3">, relevés : </span><span class="s5">{</span><span class="s1">num_releves</span><span class="s5">}</span><span class="s3">&quot;</span><span class="s1">)</span>
+        <span class="s1">plt.show()</span>
+
+
+<span class="s2">def </span><span class="s1">compute_matrix_corr(taxon: int, station: int=</span><span class="s2">None</span><span class="s1">, her: int=</span><span class="s2">None</span><span class="s1">, plot=</span><span class="s2">False</span><span class="s1">):</span>
+    <span class="s1">x_dict = {</span><span class="s3">&quot;station&quot;</span><span class="s1">: [], </span><span class="s3">&quot;her&quot;</span><span class="s1">: []}</span>
+    <span class="s2">if </span><span class="s1">station:</span>
+        <span class="s1">station_count = result[result[</span><span class="s3">&quot;taxon_id&quot;</span><span class="s1">] == taxon][</span><span class="s3">&quot;stn_id&quot;</span><span class="s1">].value_counts()[:station]</span>
+        <span class="s2">for </span><span class="s1">stn_id, stn_releves </span><span class="s2">in </span><span class="s1">zip(station_count.index, station_count):</span>
+            <span class="s1">corr_df = result[(result[</span><span class="s3">&quot;stn_id&quot;</span><span class="s1">] == stn_id) &amp; (result[</span><span class="s3">&quot;taxon_id&quot;</span><span class="s1">] == taxon)]</span>
+            <span class="s1">corr = corr_df.drop(columns=[</span><span class="s3">&quot;her&quot;</span><span class="s1">, </span><span class="s3">&quot;date_year&quot;</span><span class="s1">, </span><span class="s3">&quot;liste_ff_id&quot;</span><span class="s1">, </span><span class="s3">&quot;taxon_id&quot;</span><span class="s1">, </span><span class="s3">&quot;stn_id&quot;</span><span class="s1">]).corr()</span>
+            <span class="s1">x = corr[[</span><span class="s3">&quot;Nombre exact d'individus&quot;</span><span class="s1">]]</span>
+            <span class="s1">x_dict[</span><span class="s3">&quot;station&quot;</span><span class="s1">].append(x)</span>
+
+            <span class="s2">if </span><span class="s1">plot:</span>
+                <span class="s1">plot_x(x, mode=</span><span class="s3">&quot;station&quot;</span><span class="s1">, id=stn_id, num_releves=stn_releves, taxon=taxon)</span>
+
+
+    <span class="s2">if </span><span class="s1">her:</span>
+        <span class="s1">her_count = result[result[</span><span class="s3">&quot;taxon_id&quot;</span><span class="s1">] == taxon][</span><span class="s3">&quot;her&quot;</span><span class="s1">].value_counts()[:her]</span>
+        <span class="s2">for </span><span class="s1">her_id, her_releves </span><span class="s2">in </span><span class="s1">zip(her_count.index, her_count):</span>
+            <span class="s1">corr_df = result[(result[</span><span class="s3">&quot;her&quot;</span><span class="s1">] == her_id) &amp; (result[</span><span class="s3">&quot;taxon_id&quot;</span><span class="s1">] == taxon)]</span>
+            <span class="s1">corr = corr_df.drop(columns=[</span><span class="s3">&quot;her&quot;</span><span class="s1">, </span><span class="s3">&quot;date_year&quot;</span><span class="s1">, </span><span class="s3">&quot;liste_ff_id&quot;</span><span class="s1">, </span><span class="s3">&quot;taxon_id&quot;</span><span class="s1">, </span><span class="s3">&quot;stn_id&quot;</span><span class="s1">]).corr()</span>
+            <span class="s1">x = corr[[</span><span class="s3">&quot;Nombre exact d'individus&quot;</span><span class="s1">]]</span>
+            <span class="s1">x_dict[</span><span class="s3">&quot;her&quot;</span><span class="s1">].append(x)</span>
+
+            <span class="s2">if </span><span class="s1">plot:</span>
+                <span class="s1">plot_x(x, mode=</span><span class="s3">&quot;her&quot;</span><span class="s1">, id=her_id, num_releves=her_releves, taxon=taxon)</span>
+    <span class="s2">return </span><span class="s1">x_dict</span>
+<span class="s0">#%% md 
+</span><span class="s1">On s'intéresse maintenant aux possibles corrélations entre le nombre d'individus et les paramètres. 
+Comme dit précédemment, cela doit se faire taxon par taxon. On commence par regarder pour les 5 taxons conservés, les 5 stations ayant le plus de relevés. 
+ 
+On s'intéresse aussi aux relevés par &quot;her&quot;, des groupements de stations. 
+</span><span class="s0">#%% 
+</span><span class="s2">for </span><span class="s1">taxon </span><span class="s2">in </span><span class="s1">taxons_to_keep:</span>
+    <span class="s1">x_dict = compute_matrix_corr(taxon, station=</span><span class="s4">5</span><span class="s1">, her=</span><span class="s4">2</span><span class="s1">, plot=</span><span class="s2">True</span><span class="s1">)</span>
+<span class="s0">#%% md 
+</span><span class="s1">On observe que de nombreux taxons sont corrélés avec le paramètre 1348, &quot;Silice&quot; sur certaines stations, on peut poser l'hypothèse que l'évolution de ce paramètre impacte ces taxons. De plus on observe également le taxon 933 est corrélé avec plusieurs paramètres sur certaines stations. Il pourrait être plus sensible que les autres taxons à des paramètres physico-chimiques 
+ 
+De manière plus générale, on observe que pour un même taxon, les corrélations varient grandement suivant la station. Ainsi, la corrélation sur tout les relevés d'un &quot;her&quot; montrent plutôt des valeurs de corrélation négligeable : même sur un taxon en particulier, l'équilibre optimal des paramètres varie suivant le lieu, ce qui laisse suggérer que les paramètres pris à l'unité ne suffisent pas à décrire les interactions de produisant. 
+ 
+On s'intéresse aussi à la moyenne des corrélations sur les k stations comportant le plus de relevés pour un taxon. On espère que cela permette de ressortir quelques paramètres qui influencent de manière plus visible un taxon. 
+</span><span class="s0">#%% 
+</span><span class="s2">for </span><span class="s1">taxon </span><span class="s2">in </span><span class="s1">taxons_to_keep:</span>
+    <span class="s2">for </span><span class="s1">k </span><span class="s2">in </span><span class="s1">[</span><span class="s4">5</span><span class="s1">, </span><span class="s4">10</span><span class="s1">, </span><span class="s4">25</span><span class="s1">, </span><span class="s4">50</span><span class="s1">]:</span>
+        <span class="s1">x_dict = compute_matrix_corr(taxon, station=k, her=</span><span class="s4">2</span><span class="s1">, plot=</span><span class="s2">False</span><span class="s1">)</span>
+
+        <span class="s1">x = </span><span class="s2">None</span>
+        <span class="s2">for </span><span class="s1">x_corr </span><span class="s2">in </span><span class="s1">x_dict[</span><span class="s3">&quot;station&quot;</span><span class="s1">]:</span>
+            <span class="s1">x = x_corr </span><span class="s2">if </span><span class="s1">x </span><span class="s2">is None else </span><span class="s1">x + x_corr</span>
+        <span class="s1">x = x.divide(len(x_dict[</span><span class="s3">&quot;station&quot;</span><span class="s1">]))</span>
+        <span class="s1">plot_x(x, mode=</span><span class="s3">&quot;Moyenne sur top k stations&quot;</span><span class="s1">, id=</span><span class="s3">&quot;k =&quot;</span><span class="s1">, num_releves=</span><span class="s3">f&quot;</span><span class="s5">{</span><span class="s1">len(x_dict[</span><span class="s3">'station'</span><span class="s1">])</span><span class="s5">}</span><span class="s3">&quot;</span><span class="s1">, taxon=taxon)</span>
+<span class="s0">#%% md 
+</span><span class="s1">Quand on prend un nombre &quot;raisonnable&quot; de stations pour la moyenne, on tend à ne pas avoir de corrélation directe. 
+Les cases NA tendent aussi à poser un problème. 
+ 
+La prochaine étape de l'analyse pourrait constituer en l'étude de combinaisons linéaires de 2 ou 3 paramètres et leur corrélation avec le nombre d'individus. 
+Plus généralement, nous avons ignoré le Dataframe contenant des séquences d'altérations de l'eau et leur label. Nous en avons compris que ce tableau recensait des combinaisons, ou conditions sur un ensemble de paramètres menant à une altération notable de l'eau, labellisées par impact. 
+ 
+Ainsi, on pourrait, avant de construire la matrice d'altération, filtrer les lignes en ne conservant que celle qui présente au moins une séquence d'altération importante. On garderait alors des lignes dans lesquels on sait que les paramètres ont un impact direct sur le milieu dans lequel évolue le taxon étudié. Il serait peut-être possible d'extraire des corrélations pertinentes. 
+ 
+Pour ce faire, une approche que nous pensons possible, mais que nous n'avons pas eu le temps d'essayer : 
+- Construire un dictionnaire imbriqué, dont les clés du premier sont les couples station/année (ou l'index de la ligne) et les clés intérieures sont les différents paramètres 
+- Dans le dictionnaire associé à chaque paramètre, on stocke les séquences d'altérations compatibles avec la valeur du paramètre. 
+- Pour chaque séquence, on teste si elle est présente dans le dictionnaire associé à chaque paramètre impliqué dans celle-ci 
+- Si oui, on peut l'ajouter à une liste associée au couple station/année permettant de garder en mémoire les séquences d'altérations présentes sur chaque ligne. 
+- Sinon, on supprime cette séquence de tout les dictionnaires dans lesquels elle se trouve 
+- Enfin, on supprime une ligne si les dictionnaires de chaque paramètre sont vides 
+</span><span class="s0">#%% md 
+</span><span class="s1"># Analyses comparées d'évolutions de population de taxon et de paramètres physico-chimiques 
+</span><span class="s0">#%% md 
+</span><span class="s1">On cherche maintenant à étudier l'évolution de la population d'un taxon sur une station, en analysant l'évolution sur la même période de certains paramètres. 
+</span><span class="s0">#%% 
+</span><span class="s1">ph_test = physicochimie_df[physicochimie_df[</span><span class="s3">'stn_id'</span><span class="s1">].isin(stn_taxon[</span><span class="s3">'id'</span><span class="s1">])]</span>
+<span class="s0">#%% 
+</span><span class="s2">def </span><span class="s1">plot_graph(taxon_faune_nbr, ph_test, station_test, taxon_test, p):</span>
+    
+    <span class="s1">df_station_test = taxon_faune_nbr[taxon_faune_nbr[</span><span class="s3">'id'</span><span class="s1">] == station_test]</span>
+    
+    <span class="s1">fig, ax = plt.subplots(figsize = (</span><span class="s4">12</span><span class="s1">,</span><span class="s4">6</span><span class="s1">))</span>
+    <span class="s1">sns.lineplot(data=df_station_test[(df_station_test[</span><span class="s3">'taxon_id'</span><span class="s1">] == taxon_test)], x=</span><span class="s3">&quot;date_year&quot;</span><span class="s1">, y=</span><span class="s3">&quot;Nombre exact d'individus&quot;</span><span class="s1">,</span>
+                 <span class="s1">hue=</span><span class="s3">&quot;taxon_id&quot;</span><span class="s1">, errorbar=</span><span class="s2">None</span><span class="s1">, ax=ax, palette=</span><span class="s3">&quot;tab10&quot;</span><span class="s1">)</span>
+    <span class="s1">fig.autofmt_xdate()</span>
+    <span class="s1">plt.title(</span><span class="s3">'{} evolution on station {}'</span><span class="s1">.format(taxon_test, station_test))</span>
+    <span class="s1">plt.show()</span>
+    <span class="s1">ph_test_stn = ph_test[ph_test[</span><span class="s3">'stn_id'</span><span class="s1">] == station_test]</span>
+    <span class="s1">fig, ax = plt.subplots(figsize = (</span><span class="s4">12</span><span class="s1">,</span><span class="s4">6</span><span class="s1">))</span>
+    <span class="s1">sns.lineplot(data=ph_test_stn[(ph_test_stn[</span><span class="s3">'parameter'</span><span class="s1">] == p)], x=</span><span class="s3">&quot;date_year&quot;</span><span class="s1">, y=</span><span class="s3">&quot;valeur&quot;</span><span class="s1">, hue=</span><span class="s3">'parameter_name'</span><span class="s1">, errorbar=</span><span class="s2">None</span><span class="s1">, ax=ax, palette=</span><span class="s3">&quot;tab10&quot;</span><span class="s1">)</span>
+    <span class="s1">fig.autofmt_xdate()</span>
+    <span class="s1">plt.title(</span><span class="s3">'{} evolution on station {}'</span><span class="s1">.format(p, station_test))</span>
+    <span class="s1">plt.show()</span>
+<span class="s0">#%% 
+</span><span class="s1">station_test = </span><span class="s4">405076</span>
+<span class="s1">taxon_test = </span><span class="s4">212</span>
+<span class="s1">p = </span><span class="s4">1348</span>
+
+
+<span class="s1">plot_graph(stn_taxon, ph_test, station_test, taxon_test, p)</span>
+<span class="s0">#%% 
+</span><span class="s1">station_test = </span><span class="s4">403697</span>
+<span class="s1">taxon_test = </span><span class="s4">212</span>
+<span class="s1">p = </span><span class="s4">1348</span>
+
+
+<span class="s1">plot_graph(stn_taxon, ph_test, station_test, taxon_test, p)</span>
+<span class="s0">#%% md 
+</span><span class="s1">La corrélation observée sur la silice sur les taxons étudiés est en fait dû au manque de mesure et n'est donc pas exploitable. 
+</span><span class="s0">#%% 
+</span><span class="s1">station_test = </span><span class="s4">404759</span>
+<span class="s1">taxon_test = </span><span class="s4">212</span>
+<span class="s1">p = </span><span class="s4">1350</span>
+
+
+<span class="s1">plot_graph(stn_taxon, ph_test, station_test, taxon_test, p)</span>
+<span class="s0">#%% md 
+</span><span class="s1">On observe que le nombre d'individus tombe fortement lors des pics de présence de phosphore, on pourrait donc poser l'hypothèse que le taxon 212 est sensible à la forte présence de phosphore. On observe également que la population prend du temps à revenir même lorsque le phosphore est dissipé. 
+</span><span class="s0">#%% 
+</span><span class="s1">station_test = </span><span class="s4">403697</span>
+<span class="s1">taxon_test = </span><span class="s4">212</span>
+<span class="s1">p = </span><span class="s4">1301</span>
+
+
+<span class="s1">plot_graph(stn_taxon, ph_test, station_test, taxon_test, p)</span>
+<span class="s0">#%% md 
+</span><span class="s1">Ce taxon semble également sensible aux variations de température, lorsque la température est trop haute la population est moindre 
+</span><span class="s0">#%% 
+</span><span class="s1">station_test = </span><span class="s4">404759</span>
+<span class="s1">taxon_test = </span><span class="s4">364</span>
+<span class="s1">p = </span><span class="s4">1301</span>
+
+
+<span class="s1">plot_graph(stn_taxon, ph_test, station_test, taxon_test, p)</span>
+<span class="s0">#%% md 
+</span><span class="s1">Le taxon 364 semble également sensible aux variations de température, lorsque la température est trop haute la population est moindre. On voit sur le graphique ci-dessus que lorsque la température est à son plus bas (2010) la population est le plus élevé. 
+</span><span class="s0">#%% 
+</span><span class="s1">station_test = </span><span class="s4">403879</span>
+<span class="s1">taxon_test = </span><span class="s4">933</span>
+<span class="s1">p = </span><span class="s4">1367</span>
+
+
+<span class="s1">plot_graph(stn_taxon, ph_test, station_test, taxon_test, p)</span>
+<span class="s0">#%% md 
+</span><span class="s1">Pour le taxon 933 on peut trouver un lien avec le potassium. Il semble avoir besoin de celui-ci pour pouvoir peupler un environnement. 
+</span><span class="s0">#%% 
+</span><span class="s1">station_test = </span><span class="s4">405516</span>
+<span class="s1">taxon_test = </span><span class="s4">807</span>
+<span class="s1">p = </span><span class="s4">1372</span>
+
+
+<span class="s1">plot_graph(stn_taxon, ph_test, station_test, taxon_test, p)</span>
+<span class="s0">#%% md 
+</span><span class="s1">Le taxon étudié ici est le 807 (Chironomidae). Comme mentionné plus haut, après une pollution organique majeure ou durable, les Chironomidae font partie des espèces pionnières qui contribuent à la résilience de l'écosystème. Le pic d'augmentation de la population de cette espèce à partir de 2012 pourrait signifier la disparition d'une pollution notable de l'environnement à partir de cette année. Cela pourrait laisser penser que le magnésium est un bon indicateur de la viabilité d'un habitat, le pic suivant celui de la quantité de magnésium lors de 2011. 
+</span><span class="s0">#%% md 
+</span><span class="s1">Nous pouvons voir que s'il est difficile d'extraire des relations simples de corrélations entre paramètres uniques et nombre d'individus, cette quantité semble corréler dans plusieurs exemples précis avec l'évolution ou le comportement de différents paramètres physico-chimique. Ceci est un élément de plus laissant penser qu'il serait pertinent de poursuivre l'analyse en s'intéressant à des combinaisons de paramètres ou à des séquences d'altérations.</span></pre>
+</body>
+</html>
